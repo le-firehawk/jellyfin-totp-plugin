@@ -10,9 +10,11 @@ dotnet publish --configuration Release --output bin
 
 ## GitHub CI and releases
 
-The repository includes a GitHub Actions workflow at `.github/workflows/build.yml` that restores, builds, publishes, zips, and uploads the plugin. The workflow publishes the ZIP together with the checked-in static `manifest.json`; it does not render a throwaway manifest during CI.
+The repository includes a GitHub Actions workflow at `.github/workflows/build.yml` that restores, builds, publishes, zips, and uploads the plugin. Release builds also update the checked-in static `manifest.json` so the Jellyfin repository document always points at immutable versioned release assets.
 
-`manifest.json` is the Jellyfin plugin repository document and is intentionally committed so it keeps a complete version history. Before publishing a new version tag, append or replace that version entry with the helper script after building the ZIP and calculating Jellyfin's MD5 checksum:
+`manifest.json` is the Jellyfin plugin repository document and is intentionally committed so it keeps a complete version history. When a `v*` tag or GitHub release is published, CI builds the ZIP, calculates Jellyfin's MD5 checksum, derives the plugin version from the tag, appends or replaces that version entry, commits `manifest.json` back to the default branch, and uploads the ZIP plus updated manifest to the release.
+
+You can still update the manifest locally with the same helper script when testing the release process manually:
 
 ```bash
 dotnet publish --configuration Release --output dist/plugin
@@ -26,7 +28,7 @@ python3 scripts/append_manifest_version.py \
   --changelog "Release v1.0.0.0."
 ```
 
-Commit the updated `manifest.json` with the release change, then push the tag. New entries are inserted at the top of the `versions` array while older entries remain in the file for historical installs.
+New entries are inserted at the top of the `versions` array while older entries remain in the file for historical installs.
 
 ## Pull request test builds
 
