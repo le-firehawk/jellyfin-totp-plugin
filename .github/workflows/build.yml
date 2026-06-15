@@ -1,0 +1,72 @@
+name: Build Jellyfin TOTP Plugin
+
+on:
+  push:
+    branches: [ main, master, work ]
+    tags: [ 'v*' ]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      CONFIGURATION: Release
+      ARTIFACT_NAME: Jellyfin.Plugin.Totp
+      TARGET_ABI: 10.10.0.0
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore
+        run: dotnet restore Jellyfin.Plugin.Totp.csproj
+
+      - name: Build
+        run: dotnet build Jellyfin.Plugin.Totp.csproj --configuration "$CONFIGURATION" --no-restore
+
+      - name: Publish
+        run: dotnet publish Jellyfin.Plugin.Totp.csproj --configuration "$CONFIGURATION" --no-build --output dist/plugin
+
+      - name: Package plugin
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd dist/plugin
+          zip -r ../${ARTIFACT_NAME}.zip .
+          cd ../..
+          CHECKSUM=$(sha256sum dist/${ARTIFACT_NAME}.zip | awk '{print $1}')
+          VERSION=$(git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || echo '0.1.0.0')
+          SOURCE_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/v${VERSION}/${ARTIFACT_NAME}.zip"
+          python3 scripts/render_manifest.py \
+            --version "$VERSION" \
+            --target-abi "$TARGET_ABI" \
+            --source-url "$SOURCE_URL" \
+            --checksum "$CHECKSUM" \
+            --output dist/manifest.json
+          echo "Repository manifest URL: https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${GITHUB_REF_NAME}/manifest.json" >> "$GITHUB_STEP_SUMMARY"
+          echo "Release manifest artifact: dist/manifest.json" >> "$GITHUB_STEP_SUMMARY"
+          echo "Jellyfin source URL: ${SOURCE_URL}" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload plugin package
+        uses: actions/upload-artifact@v4
+        with:
+          name: Jellyfin.Plugin.Totp-package
+          path: |
+            dist/Jellyfin.Plugin.Totp.zip
+            dist/manifest.json
+
+      - name: Publish GitHub release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/Jellyfin.Plugin.Totp.zip
+            dist/manifest.json
