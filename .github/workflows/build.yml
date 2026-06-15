@@ -56,6 +56,8 @@ jobs:
             RELEASE_TAG="${{ github.event.release.tag_name }}"
           elif [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
             RELEASE_TAG="${GITHUB_REF_NAME}"
+          elif [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
+            RELEASE_TAG="pr-${{ github.event.pull_request.number }}"
           else
             RELEASE_TAG=""
           fi
@@ -72,7 +74,12 @@ jobs:
             fi
           }
 
-          if [[ -n "${RELEASE_TAG}" ]]; then
+          if [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
+            VERSION="0.0.${{ github.event.pull_request.number }}.${GITHUB_RUN_NUMBER}"
+            SOURCE_URL="${REPO_URL}/releases/download/${RELEASE_TAG}/${ARTIFACT_NAME}.zip"
+            LATEST_SOURCE_URL="${SOURCE_URL}"
+            CHANGELOG="Automated pull request build ${RELEASE_TAG} from commit ${SHORT_SHA}."
+          elif [[ -n "${RELEASE_TAG}" ]]; then
             VERSION="$(normalize_version "${RELEASE_TAG}")"
             SOURCE_URL="${REPO_URL}/releases/download/${RELEASE_TAG}/${ARTIFACT_NAME}.zip"
             LATEST_SOURCE_URL="${REPO_URL}/releases/download/latest/${ARTIFACT_NAME}.zip"
@@ -100,7 +107,10 @@ jobs:
             --changelog "$CHANGELOG" \
             --output "dist/latest/manifest.json"
 
-          if [[ -n "${RELEASE_TAG}" ]]; then
+          if [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
+            echo "Pull request manifest URL: ${REPO_URL}/releases/download/${RELEASE_TAG}/manifest.json" >> "$GITHUB_STEP_SUMMARY"
+            echo "Pull request ZIP URL: ${SOURCE_URL}" >> "$GITHUB_STEP_SUMMARY"
+          elif [[ -n "${RELEASE_TAG}" ]]; then
             echo "Manifest URL: ${REPO_URL}/releases/download/${RELEASE_TAG}/manifest.json" >> "$GITHUB_STEP_SUMMARY"
             echo "Latest manifest URL: ${REPO_URL}/releases/download/latest/manifest.json" >> "$GITHUB_STEP_SUMMARY"
             echo "Release ZIP URL: ${SOURCE_URL}" >> "$GITHUB_STEP_SUMMARY"
@@ -124,6 +134,25 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event.release.tag_name || github.ref_name }}
+          fail_on_unmatched_files: true
+          files: |
+            dist/Jellyfin.Plugin.Totp.zip
+            dist/manifest.json
+
+
+      - name: Publish pull request GitHub release
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: pr-${{ github.event.pull_request.number }}
+          name: Pull Request #${{ github.event.pull_request.number }} Jellyfin TOTP Plugin Build
+          body: |
+            Automated build for pull request #${{ github.event.pull_request.number }} from commit ${{ github.event.pull_request.head.sha }}.
+
+            Import this manifest URL in Jellyfin to test this pull request build:
+            https://github.com/${{ github.repository }}/releases/download/pr-${{ github.event.pull_request.number }}/manifest.json
+          prerelease: true
+          make_latest: false
           fail_on_unmatched_files: true
           files: |
             dist/Jellyfin.Plugin.Totp.zip

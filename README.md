@@ -15,7 +15,18 @@ The repository includes a GitHub Actions workflow at `.github/workflows/build.ym
 - `Jellyfin.Plugin.Totp.zip`
 - `manifest.json`
 
-The release manifest is generated during the workflow instead of being stored as a static file. For tag releases, the generated manifest uses a Jellyfin-compatible `System.Version` value derived from the pushed tag and points `sourceUrl` at the matching release ZIP. For non-tag builds, the uploaded workflow artifact manifest uses `0.0.0.0` so Jellyfin can parse the manifest during diagnostics, but that artifact is not intended to be imported as a plugin repository because it points at the workflow run rather than a downloadable ZIP asset.
+The release manifest is generated during the workflow instead of being stored as a static file. For tag releases, the generated manifest uses a Jellyfin-compatible `System.Version` value derived from the pushed tag and points `sourceUrl` at the matching release ZIP. Pull request builds from branches in this repository also publish a prerelease named `pr-<number>` with the same ZIP and manifest assets, so reviewers can import the PR manifest in Jellyfin exactly like a manual release. For other non-tag builds, the uploaded workflow artifact manifest uses `0.0.0.0` so Jellyfin can parse the manifest during diagnostics, but that artifact is not intended to be imported as a plugin repository because it points at the workflow run rather than a downloadable ZIP asset.
+
+
+## Pull request test builds
+
+Pull requests opened from branches in this repository publish a prerelease whose tag matches the pull request number, for example `pr-12`. Import the PR manifest URL to test the exact build produced by GitHub Actions:
+
+```text
+https://github.com/<owner>/jellyfin-totp-plugin/releases/download/pr-<number>/manifest.json
+```
+
+The PR manifest points to the ZIP asset on the same prerelease, matching the layout used by versioned and rolling `latest` releases. Pull requests from forks still build and upload workflow artifacts, but they do not publish prereleases because GitHub does not grant write credentials to untrusted fork builds.
 
 ## Jellyfin repository URL
 
