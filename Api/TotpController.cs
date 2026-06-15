@@ -11,6 +11,14 @@ public class TotpController : ControllerBase
 {
     private readonly IUserManager _users; private readonly TotpService _totp;
     public TotpController(IUserManager users, TotpService totp) { _users = users; _totp = totp; }
+
+    [HttpGet("ClientScript")]
+    [AllowAnonymous]
+    [ResponseCache(Duration = 0, Location = ResponseCacheLocation.None, NoStore = true)]
+    public ContentResult ClientScript()
+    {
+        return Content(TotpMiddleware.GetClientScript(), "application/javascript");
+    }
     [HttpGet("Status/{userId:guid}")]
     public ActionResult<object> Status(Guid userId) => Ok(new { enabled = _totp.IsEnabled(userId), required = Plugin.Instance?.Configuration.RequireTwoFactorForAllUsers == true });
     [HttpPost("Setup/{userId:guid}")]
