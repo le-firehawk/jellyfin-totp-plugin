@@ -2,6 +2,7 @@
   'use strict';
 
   const injectedAttribute = 'data-jellyfin-totp-injected';
+  const setupState = {};
 
   async function promptCode() {
     return window.prompt('Enter your six-digit authenticator code');
@@ -21,104 +22,181 @@
   function createSection(id) {
     const section = document.createElement('div');
     section.id = id;
-    section.className = 'verticalSection';
+    section.className = 'verticalSection verticalSection-extrabottompadding';
     section.setAttribute(injectedAttribute, 'true');
     return section;
   }
 
+  function currentViewText() {
+    return ((document.querySelector('.page:not(.hide), .page:not(.hidden), [data-role="page"]') || document.body).textContent || '').toLowerCase();
+  }
+
   function getCurrentUserId() {
-    if (ApiClient.getCurrentUserId) return ApiClient.getCurrentUserId();
-    const credentialProvider = ApiClient._serverInfo || ApiClient.serverInfo;
-    return credentialProvider && credentialProvider.UserId;
+    if (window.ApiClient && ApiClient.getCurrentUserId) return ApiClient.getCurrentUserId();
+    const serverInfo = window.ApiClient && (ApiClient._serverInfo || ApiClient.serverInfo);
+    return serverInfo && serverInfo.UserId;
   }
 
   function getRouteUserId() {
-    const query = new URLSearchParams(window.location.search);
+    const hashQuery = (window.location.hash.split('?')[1] || '').split('#')[0];
+    const query = new URLSearchParams(window.location.search || hashQuery);
     return query.get('userId') || query.get('id') || query.get('user') || getCurrentUserId();
   }
 
-  function findTextElement(text) {
-    const candidates = document.querySelectorAll('label, .fieldDescription, .selectLabel, h2, h3, div');
+  function findTextElement(pattern) {
+    const candidates = document.querySelectorAll('label, .fieldDescription, .selectLabel, h1, h2, h3, h4, div, span');
     return Array.prototype.find.call(candidates, function (element) {
-      return (element.textContent || '').trim() === text;
+      return pattern.test((element.textContent || '').trim());
     });
   }
 
   function findSettingsProfileAnchor() {
+    const text = currentViewText();
+    if (!/profile|password|tfa|two-factor|two factor|authentication/i.test(text)) return null;
+
+    const tfaHeading = findTextElement(/^(tfa|two-factor authentication|two factor authentication)$/i);
+    if (tfaHeading) return tfaHeading.closest('.verticalSection, form, .sectionContent, [data-role="content"]') || tfaHeading.parentElement;
+
     const passwordButton = Array.prototype.find.call(document.querySelectorAll('button, .emby-button'), function (button) {
-      return /save password/i.test(button.textContent || '');
+      return /save password|change password/i.test(button.textContent || '');
     });
 
-    if (!passwordButton) return null;
-    return passwordButton.closest('.verticalSection, form, .sectionContent') || passwordButton.parentElement;
+    if (passwordButton) return passwordButton.closest('.verticalSection, form, .sectionContent') || passwordButton.parentElement;
+
+    const profileHeading = findTextElement(/^profile$/i);
+    return profileHeading && (profileHeading.closest('.verticalSection, form, .sectionContent, [data-role="content"]') || profileHeading.parentElement);
   }
 
   function findAdminUserAnchor() {
-    const passwordResetLabel = findTextElement('Password Reset Provider');
+    const text = currentViewText();
+    if (!/password reset provider|reset password|policy|user/i.test(text)) return null;
+
+    const passwordResetLabel = findTextElement(/password reset provider/i) || findTextElement(/reset password/i);
     if (!passwordResetLabel) return null;
 
-    const container = passwordResetLabel.closest('.selectContainer, .inputContainer, .fieldDescriptionContainer') || passwordResetLabel.parentElement;
+    const container = passwordResetLabel.closest('.selectContainer, .inputContainer, .fieldDescriptionContainer, .verticalSection') || passwordResetLabel.parentElement;
     const description = container && container.querySelector('.fieldDescription');
     return (description || container);
   }
 
-  async function setupTotp(userId) {
-    const result = await ApiClient.ajax({ type: 'POST', url: ApiClient.getUrl('Totp/Setup/' + userId) });
-    alert('Add this secret to your authenticator app: ' + result.secret + '\n\nURI: ' + result.uri);
+  async function apiRequest(method, path, data) {
+    return ApiClient.ajax({
+      type: method,
+      url: ApiClient.getUrl(path),
+      data: data ? JSON.stringify(data) : undefined,
+      contentType: data ? 'application/json' : undefined,
+      headers: { Accept: 'application/json' }
+    });
   }
 
-  async function confirmTotp(userId) {
-    const code = await promptCode();
-    if (!code) return;
+  async function getStatus(userId) {
+    return apiRequest('GET', 'Totp/Status/' + userId);
+  }
 
-    await ApiClient.ajax({
-      type: 'POST',
-      url: ApiClient.getUrl('Totp/Confirm/' + userId),
-      data: JSON.stringify({ code: code }),
-      contentType: 'application/json'
-    });
-    alert('TOTP enabled.');
+  async function setupTotp(userId) {
+    return apiRequest('POST', 'Totp/Setup/' + userId);
+  }
+
+  async function confirmTotp(userId, code) {
+    return apiRequest('POST', 'Totp/Confirm/' + userId, { code: code });
   }
 
   async function resetTotp(userId) {
     if (!confirm('Reset this user\'s TOTP secret?')) return;
 
-    await ApiClient.ajax({ type: 'DELETE', url: ApiClient.getUrl('Totp/Reset/' + userId) });
-    alert('TOTP has been reset for this user.');
+    await apiRequest('DELETE', 'Totp/Reset/' + userId);
+    alert('TOTP has been reset for this user. The user can configure a new authenticator app from Settings → Profile → TFA.');
+    const section = document.getElementById('jellyfinTotpAdminReset');
+    if (section) section.querySelector('.jellyfin-totp-status').textContent = 'TOTP secret reset.';
+  }
+
+  function renderSetupDetails(container, setup) {
+    setupState.secret = setup.secret;
+    setupState.uri = setup.uri;
+    container.innerHTML = '';
+
+    const instructions = document.createElement('p');
+    instructions.className = 'fieldDescription';
+    instructions.textContent = 'Scan this URI with an authenticator app, or reveal and copy the secret key manually. Then enter the current six-digit code below.';
+    container.appendChild(instructions);
+
+    const revealButton = createButton('Reveal TOTP secret', 'raised block');
+    const secret = document.createElement('pre');
+    secret.className = 'fieldDescription';
+    secret.style.whiteSpace = 'pre-wrap';
+    secret.style.userSelect = 'all';
+    secret.hidden = true;
+    secret.textContent = 'Secret: ' + setup.secret + '\n\nAuthenticator URI: ' + setup.uri;
+    revealButton.addEventListener('click', function () { secret.hidden = !secret.hidden; revealButton.querySelector('span').textContent = secret.hidden ? 'Reveal TOTP secret' : 'Hide TOTP secret'; });
+    container.appendChild(revealButton);
+    container.appendChild(secret);
   }
 
   function injectProfileSetup() {
-    if (document.getElementById('jellyfinTotpProfileSetup')) return;
+    if (document.getElementById('jellyfinTotpProfileSetup') || !window.ApiClient) return;
 
     const anchor = findSettingsProfileAnchor();
     const userId = getCurrentUserId();
     if (!anchor || !userId) return;
 
     const section = createSection('jellyfinTotpProfileSetup');
-    section.innerHTML = '<h2>TOTP Two-Factor Authentication</h2><p class="fieldDescription">Configure an authenticator app to protect your account with a six-digit verification code.</p>';
+    section.innerHTML = '<div class="sectionTitleContainer flex align-items-center"><h2 class="sectionTitle">TFA - Authenticator App</h2></div><p class="fieldDescription jellyfin-totp-status">Configure a time-based one-time password (TOTP) authenticator app to protect your account.</p>';
 
-    const setupButton = createButton('Set up TOTP', 'raised button-submit block');
-    setupButton.addEventListener('click', async function () { await setupTotp(userId); });
+    const details = document.createElement('div');
+    details.className = 'jellyfin-totp-details';
+    section.appendChild(details);
+
+    const setupButton = createButton('Set up or replace authenticator app', 'raised button-submit block');
+    setupButton.addEventListener('click', async function () {
+      try {
+        const result = await setupTotp(userId);
+        renderSetupDetails(details, result);
+      } catch (err) { alert('Unable to start TOTP setup: ' + (err.message || err)); }
+    });
     section.appendChild(setupButton);
 
-    const confirmButton = createButton('Confirm TOTP Code', 'raised block');
-    confirmButton.addEventListener('click', async function () { await confirmTotp(userId); });
+    const codeContainer = document.createElement('div');
+    codeContainer.className = 'inputContainer';
+    codeContainer.innerHTML = '<input is="emby-input" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" id="jellyfinTotpCode" label="Authenticator code" /><div class="fieldDescription">Enter the six-digit code from your authenticator app to enable TFA.</div>';
+    section.appendChild(codeContainer);
+
+    const confirmButton = createButton('Enable TFA', 'raised block');
+    confirmButton.addEventListener('click', async function () {
+      const input = section.querySelector('#jellyfinTotpCode');
+      const code = input && input.value;
+      if (!code) { alert('Enter the six-digit authenticator code first.'); return; }
+      try {
+        await confirmTotp(userId, code);
+        section.querySelector('.jellyfin-totp-status').textContent = 'TFA is enabled for this account.';
+        details.innerHTML = '';
+        alert('TOTP enabled.');
+      } catch (err) { alert('Invalid TOTP code. Please try again.'); }
+    });
     section.appendChild(confirmButton);
+
+    getStatus(userId).then(function (status) {
+      section.querySelector('.jellyfin-totp-status').textContent = status.enabled ? 'TFA is enabled for this account.' : 'TFA is not enabled for this account.';
+    }).catch(function () { });
 
     anchor.insertAdjacentElement('afterend', section);
   }
 
   function injectAdminReset() {
-    if (document.getElementById('jellyfinTotpAdminReset')) return;
+    if (document.getElementById('jellyfinTotpAdminReset') || !window.ApiClient) return;
 
     const anchor = findAdminUserAnchor();
     const userId = getRouteUserId();
     if (!anchor || !userId) return;
 
     const section = createSection('jellyfinTotpAdminReset');
+    section.innerHTML = '<div class="sectionTitleContainer flex align-items-center"><h3 class="sectionTitle">TFA - Authenticator App</h3></div><p class="fieldDescription jellyfin-totp-status">Reset this user\'s authenticator app secret if they lose access to their codes.</p>';
     const button = createButton('Reset TOTP for this user', 'raised button-cancel block');
     button.addEventListener('click', async function () { await resetTotp(userId); });
     section.appendChild(button);
+
+    getStatus(userId).then(function (status) {
+      section.querySelector('.jellyfin-totp-status').textContent = status.enabled ? 'TFA is enabled for this user.' : 'TFA is not enabled for this user.';
+    }).catch(function () { });
 
     anchor.insertAdjacentElement('afterend', section);
   }
@@ -143,7 +221,7 @@
         init.headers.set('X-Jellyfin-TOTP', code);
         response = await originalFetch(input, init);
       } else if (payload && payload.Error === 'TwoFactorSetupRequired') {
-        alert('Two-factor authentication is required. Open Settings → Profile to configure your authenticator app, then sign in again.');
+        alert('Two-factor authentication is required. Open Settings → Profile → TFA to configure your authenticator app, then sign in again.');
       }
     }
     return response;
@@ -159,5 +237,7 @@
   document.addEventListener('viewshow', injectTotpUi);
   document.addEventListener('pageshow', injectTotpUi);
   document.addEventListener('DOMContentLoaded', injectTotpUi);
+  window.addEventListener('hashchange', function () { setTimeout(injectTotpUi, 100); });
+  setInterval(injectTotpUi, 1000);
   new MutationObserver(injectTotpUi).observe(document.body || document.documentElement, { childList: true, subtree: true });
 }());
