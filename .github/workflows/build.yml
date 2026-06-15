@@ -2,7 +2,7 @@ name: Build Jellyfin TOTP Plugin
 
 on:
   push:
-    branches: [ main, master, work ]
+    branches: [ '**' ]
     tags: [ 'v*' ]
   pull_request:
   workflow_dispatch:
@@ -43,17 +43,48 @@ jobs:
           zip -r ../${ARTIFACT_NAME}.zip .
           cd ../..
           CHECKSUM=$(sha256sum dist/${ARTIFACT_NAME}.zip | awk '{print $1}')
-          VERSION=$(git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || echo '0.1.0.0')
-          SOURCE_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/v${VERSION}/${ARTIFACT_NAME}.zip"
+          VERSION=$(git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || echo "0.0.0-${GITHUB_SHA::7}")
+          PAGES_BASE_URL="https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}"
+
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            RELEASE_PATH="${GITHUB_REF_NAME}"
+          elif [[ "${GITHUB_REF_NAME}" == "main" ]]; then
+            RELEASE_PATH="main"
+          else
+            RELEASE_PATH=""
+          fi
+
+          COMMIT_PATH="${GITHUB_REF_NAME}/${GITHUB_SHA}"
+          mkdir -p "dist/site/${COMMIT_PATH}"
+          cp "dist/${ARTIFACT_NAME}.zip" "dist/site/${COMMIT_PATH}/${ARTIFACT_NAME}.zip"
           python3 scripts/render_manifest.py \
             --version "$VERSION" \
             --target-abi "$TARGET_ABI" \
-            --source-url "$SOURCE_URL" \
+            --source-url "${PAGES_BASE_URL}/${COMMIT_PATH}/${ARTIFACT_NAME}.zip" \
             --checksum "$CHECKSUM" \
-            --output dist/manifest.json
-          echo "Repository manifest URL: https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/${GITHUB_REF_NAME}/manifest.json" >> "$GITHUB_STEP_SUMMARY"
-          echo "Release manifest artifact: dist/manifest.json" >> "$GITHUB_STEP_SUMMARY"
-          echo "Jellyfin source URL: ${SOURCE_URL}" >> "$GITHUB_STEP_SUMMARY"
+            --output "dist/site/${COMMIT_PATH}/manifest.json"
+
+          if [[ -n "${RELEASE_PATH}" ]]; then
+            mkdir -p "dist/site/${RELEASE_PATH}"
+            cp "dist/${ARTIFACT_NAME}.zip" "dist/site/${RELEASE_PATH}/${ARTIFACT_NAME}.zip"
+            python3 scripts/render_manifest.py \
+              --version "$VERSION" \
+              --target-abi "$TARGET_ABI" \
+              --source-url "${PAGES_BASE_URL}/${RELEASE_PATH}/${ARTIFACT_NAME}.zip" \
+              --checksum "$CHECKSUM" \
+              --output "dist/site/${RELEASE_PATH}/manifest.json"
+          fi
+
+          if [[ -n "${RELEASE_PATH}" ]]; then
+            cp "dist/site/${RELEASE_PATH}/manifest.json" dist/manifest.json
+          else
+            cp "dist/site/${COMMIT_PATH}/manifest.json" dist/manifest.json
+          fi
+          echo "Commit manifest URL: ${PAGES_BASE_URL}/${COMMIT_PATH}/manifest.json" >> "$GITHUB_STEP_SUMMARY"
+          if [[ -n "${RELEASE_PATH}" ]]; then
+            echo "Release manifest URL: ${PAGES_BASE_URL}/${RELEASE_PATH}/manifest.json" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo "Jellyfin source URL: ${PAGES_BASE_URL}/${COMMIT_PATH}/${ARTIFACT_NAME}.zip" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload plugin package
         uses: actions/upload-artifact@v4
@@ -62,6 +93,15 @@ jobs:
           path: |
             dist/Jellyfin.Plugin.Totp.zip
             dist/manifest.json
+            dist/site/**
+
+      - name: Publish release artifacts to GitHub Pages
+        if: github.event_name == 'push'
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: dist/site
+          keep_files: true
 
       - name: Publish GitHub release
         if: startsWith(github.ref, 'refs/tags/v')
