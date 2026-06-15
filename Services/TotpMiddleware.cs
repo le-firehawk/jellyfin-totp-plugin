@@ -136,7 +136,8 @@ public sealed class TotpMiddleware
             return;
         }
 
-        var script = $"<script id=\"{InjectedMarker}\">\n{ClientScript.Value}\n</script>";
+        var scriptUrl = $"{context.Request.PathBase}/Totp/ClientScript?v={Uri.EscapeDataString(Plugin.Instance?.Version?.ToString() ?? "unknown")}";
+        var script = $"<script id=\"{InjectedMarker}\" src=\"{scriptUrl}\" defer></script>";
         var index = body.LastIndexOf("</body>", StringComparison.OrdinalIgnoreCase);
         var injected = index >= 0 ? body.Insert(index, script) : body + script;
         context.Response.ContentLength = null;
@@ -180,6 +181,8 @@ public sealed class TotpMiddleware
         var accept = context.Request.Headers.Accept.ToString();
         return string.IsNullOrEmpty(accept) || accept.Contains("text/html", StringComparison.OrdinalIgnoreCase) || accept.Contains("*/*", StringComparison.OrdinalIgnoreCase);
     }
+
+    public static string GetClientScript() => ClientScript.Value;
 
     private static string LoadClientScript()
     {
