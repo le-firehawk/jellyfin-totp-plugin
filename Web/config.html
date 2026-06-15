@@ -1,12 +1,15 @@
 <div id="TotpConfigPage" data-role="page" class="page type-interior pluginConfigurationPage">
   <div data-role="content"><div class="content-primary">
     <h1>TOTP Two-Factor Authentication</h1>
+    <p class="fieldDescription">Require users to verify sign-ins with a time-based one-time password from an authenticator app. Users can set up TOTP from Settings &rarr; Profile, and administrators can reset a user's TOTP secret from the user profile editor.</p>
     <form id="TotpConfigForm">
-      <label><input is="emby-checkbox" type="checkbox" id="RequireTwoFactorForAllUsers" /> Mandate TFA for all users</label>
+      <label class="checkboxContainer">
+        <input is="emby-checkbox" type="checkbox" id="RequireTwoFactorForAllUsers" />
+        <span>Mandate TFA for all users</span>
+      </label>
       <div class="inputContainer"><input is="emby-input" id="Issuer" label="Authenticator issuer" /></div>
       <button is="emby-button" type="submit" class="raised button-submit block"><span>Save</span></button>
     </form>
-    <p>Install or embed the <code>totpclient</code> page script in Jellyfin Web to add profile setup prompts and admin reset buttons. The server-side middleware still enforces TOTP for authentication requests.</p>
   </div></div>
   <script type="text/javascript">
     var TotpConfig = { pluginUniqueId: '65e3f94b-29d8-4d3b-a348-2343784b1db8' };
