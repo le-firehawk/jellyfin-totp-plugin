@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 
 PLUGIN_GUID = "65e3f94b-29d8-4d3b-a348-2343784b1db8"
@@ -17,7 +18,17 @@ def main() -> None:
     parser.add_argument("--source-url", required=True)
     parser.add_argument("--checksum", required=True)
     parser.add_argument("--changelog", required=True)
+    parser.add_argument(
+        "--timestamp",
+        default=None,
+        help="UTC timestamp for the manifest entry. Defaults to the current UTC time.",
+    )
     args = parser.parse_args()
+    timestamp = args.timestamp or (
+        datetime.now(timezone.utc)
+        .replace(microsecond=0)
+        .strftime("%Y-%m-%dT%H:%M:%SZ")
+    )
 
     path = Path(args.manifest)
     manifest = json.loads(path.read_text(encoding="utf-8"))
@@ -30,6 +41,7 @@ def main() -> None:
         "targetAbi": args.target_abi,
         "sourceUrl": args.source_url,
         "checksum": args.checksum,
+        "timestamp": timestamp,
     })
     path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
 
