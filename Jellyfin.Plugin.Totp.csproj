@@ -7,6 +7,11 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <NoWarn>$(NoWarn);1591</NoWarn>
+    <Authors>le-firehawk</Authors>
+    <Company>le-firehawk</Company>
+    <RepositoryUrl>https://github.com/le-firehawk/jellyfin-totp-plugin</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageProjectUrl>https://github.com/le-firehawk/jellyfin-totp-plugin</PackageProjectUrl>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Jellyfin.Controller" Version="10.10.7">
