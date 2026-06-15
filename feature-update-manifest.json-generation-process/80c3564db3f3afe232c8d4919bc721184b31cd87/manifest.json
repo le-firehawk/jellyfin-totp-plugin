@@ -1,0 +1,19 @@
+[
+  {
+    "guid": "65e3f94b-29d8-4d3b-a348-2343784b1db8",
+    "name": "TOTP Two-Factor Authentication",
+    "description": "Time-based one-time-password two-factor authentication for Jellyfin users.",
+    "overview": "Adds TOTP setup, login enforcement, administrator reset, and an optional mandate for all users.",
+    "owner": "jellyfin-totp-plugin",
+    "category": "Authentication",
+    "versions": [
+      {
+        "version": "0.0.0-80c3564",
+        "changelog": "Automated build from GitHub Actions.",
+        "targetAbi": "10.10.0.0",
+        "sourceUrl": "https://le-firehawk.github.io/jellyfin-totp-plugin/feature-update-manifest.json-generation-process/80c3564db3f3afe232c8d4919bc721184b31cd87/Jellyfin.Plugin.Totp.zip",
+        "checksum": "22ab2593e710cc5aeaf2bfd6e3fbbd8dcfe36578d25b71d9e38ff84191ab3d54"
+      }
+    ]
+  }
+]
