@@ -14,6 +14,7 @@ def main() -> None:
     parser.add_argument("--source-url", required=True)
     parser.add_argument("--checksum", required=True)
     parser.add_argument("--output", required=True)
+    parser.add_argument("--changelog", default="Automated build from GitHub Actions.")
     args = parser.parse_args()
 
     manifest = [
@@ -27,7 +28,7 @@ def main() -> None:
             "versions": [
                 {
                     "version": args.version,
-                    "changelog": "Automated build from GitHub Actions.",
+                    "changelog": args.changelog,
                     "targetAbi": args.target_abi,
                     "sourceUrl": args.source_url,
                     "checksum": args.checksum,
