@@ -1,4 +1,6 @@
 using System.Text.RegularExpressions;
+using MediaBrowser.Common.Plugins;
+using MediaBrowser.Model.Plugins;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 
@@ -16,8 +18,14 @@ public sealed class TotpMiddleware
         _logger = logger;
     }
 
-    public async Task InvokeAsync(HttpContext context, TotpService totp)
+    public async Task InvokeAsync(HttpContext context, TotpService totp, IPluginManager pluginManager)
     {
+        if (!IsPluginActive(pluginManager))
+        {
+            await _next(context);
+            return;
+        }
+
         if (IsDashboardHtmlRequest(context))
         {
             await InjectClientScriptAsync(context);
@@ -134,6 +142,17 @@ public sealed class TotpMiddleware
         context.Response.ContentLength = null;
         await context.Response.WriteAsync(injected);
         _logger.LogDebug("Injected TOTP client script into Jellyfin dashboard response.");
+    }
+
+    private static bool IsPluginActive(IPluginManager pluginManager)
+    {
+        var plugin = Plugin.Instance;
+        if (plugin is null)
+        {
+            return false;
+        }
+
+        return pluginManager.GetPlugin(plugin.Id, plugin.Version)?.Manifest.Status >= PluginStatus.Active;
     }
 
     private static bool IsUserPasswordAuthenticationRequest(HttpContext context) =>
