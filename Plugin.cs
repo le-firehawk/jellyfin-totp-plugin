@@ -11,6 +11,7 @@ public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
 {
     public static Plugin? Instance { get; private set; }
     public override string Name => "TOTP Two-Factor Authentication";
+    public override string Description => "Time-based one-time-password two-factor authentication for Jellyfin users.";
     public override Guid Id => Guid.Parse("65e3f94b-29d8-4d3b-a348-2343784b1db8");
     public Plugin(IApplicationPaths applicationPaths, IXmlSerializer xmlSerializer) : base(applicationPaths, xmlSerializer) => Instance = this;
     public IEnumerable<PluginPageInfo> GetPages() => new[] {

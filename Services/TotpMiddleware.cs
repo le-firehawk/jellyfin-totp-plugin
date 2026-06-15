@@ -20,7 +20,7 @@ public sealed class TotpMiddleware
 
     public async Task InvokeAsync(HttpContext context, TotpService totp, IPluginManager pluginManager)
     {
-        if (!IsPluginActive(pluginManager))
+        if (IsPluginManagementRequest(context) || !IsPluginActive(pluginManager))
         {
             await _next(context);
             return;
@@ -152,7 +152,21 @@ public sealed class TotpMiddleware
             return false;
         }
 
-        return pluginManager.GetPlugin(plugin.Id, plugin.Version)?.Manifest.Status >= PluginStatus.Active;
+        try
+        {
+            return pluginManager.GetPlugin(plugin.Id, plugin.Version)?.Manifest.Status == PluginStatus.Active;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static bool IsPluginManagementRequest(HttpContext context)
+    {
+        var path = context.Request.Path.Value ?? string.Empty;
+        return path.Contains("/Plugins/", StringComparison.OrdinalIgnoreCase)
+            || path.Contains("/web/ConfigurationPage", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool IsUserPasswordAuthenticationRequest(HttpContext context) =>

@@ -67,16 +67,28 @@
     return profileHeading && (profileHeading.closest('.verticalSection, form, .sectionContent, [data-role="content"]') || profileHeading.parentElement);
   }
 
+  function isUserProfileRoute() {
+    return /(^|#\/)userprofile(\?|$)/i.test(window.location.hash || '') || /\/web\/.*userprofile/i.test(window.location.pathname || '');
+  }
+
   function findAdminUserAnchor() {
     const text = currentViewText();
-    if (!/password reset provider|reset password|policy|user/i.test(text)) return null;
+    const onUserProfile = isUserProfileRoute();
+    if (!onUserProfile && !/password reset provider|reset password|policy|user/i.test(text)) return null;
 
     const passwordResetLabel = findTextElement(/password reset provider/i) || findTextElement(/reset password/i);
-    if (!passwordResetLabel) return null;
+    if (passwordResetLabel) {
+      const container = passwordResetLabel.closest('.selectContainer, .inputContainer, .fieldDescriptionContainer, .verticalSection') || passwordResetLabel.parentElement;
+      const description = container && container.querySelector('.fieldDescription');
+      return (description || container);
+    }
 
-    const container = passwordResetLabel.closest('.selectContainer, .inputContainer, .fieldDescriptionContainer, .verticalSection') || passwordResetLabel.parentElement;
-    const description = container && container.querySelector('.fieldDescription');
-    return (description || container);
+    if (!onUserProfile) return null;
+
+    const policyHeading = findTextElement(/^(policy|profile|settings)$/i);
+    if (policyHeading) return policyHeading.closest('.verticalSection, form, .sectionContent, [data-role="content"]') || policyHeading.parentElement;
+
+    return document.querySelector('.userProfilePage form, .userProfilePage .sectionContent, .page:not(.hide) form, .page:not(.hidden) form, [data-role="content"]');
   }
 
   async function apiRequest(method, path, data) {
@@ -182,13 +194,14 @@
   }
 
   function injectAdminReset() {
-    if (document.getElementById('jellyfinTotpAdminReset') || !window.ApiClient) return;
+    if (!window.ApiClient) return;
 
     const anchor = findAdminUserAnchor();
     const userId = getRouteUserId();
-    if (!anchor || !userId) return;
+    if (!anchor || !userId || document.querySelector('[data-jellyfin-totp-admin-user-id="' + userId + '"]')) return;
 
     const section = createSection('jellyfinTotpAdminReset');
+    section.setAttribute('data-jellyfin-totp-admin-user-id', userId);
     section.innerHTML = '<div class="sectionTitleContainer flex align-items-center"><h3 class="sectionTitle">TFA - Authenticator App</h3></div><p class="fieldDescription jellyfin-totp-status">Reset this user\'s authenticator app secret if they lose access to their codes.</p>';
     const button = createButton('Reset TOTP for this user', 'raised button-cancel block');
     button.addEventListener('click', async function () { await resetTotp(userId); });

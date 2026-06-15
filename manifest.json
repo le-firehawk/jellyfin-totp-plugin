@@ -1,0 +1,13 @@
+[
+  {
+    "guid": "65e3f94b-29d8-4d3b-a348-2343784b1db8",
+    "name": "TOTP Two-Factor Authentication",
+    "description": "Time-based one-time-password two-factor authentication for Jellyfin users.",
+    "overview": "Adds TOTP setup, login enforcement, administrator reset, and an optional mandate for all users.",
+    "owner": "le-firehawk",
+    "category": "Authentication",
+    "imageUrl": "https://raw.githubusercontent.com/le-firehawk/jellyfin-totp-plugin/main/icon.png",
+    "repositoryUrl": "https://github.com/le-firehawk/jellyfin-totp-plugin",
+    "versions": []
+  }
+]
