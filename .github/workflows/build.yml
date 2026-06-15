@@ -47,7 +47,8 @@ jobs:
           cd dist/plugin
           zip -r ../${ARTIFACT_NAME}.zip .
           cd ../..
-          CHECKSUM=$(sha256sum dist/${ARTIFACT_NAME}.zip | awk '{print $1}')
+          # Jellyfin validates plugin repository checksums as MD5 hashes of the ZIP asset.
+          CHECKSUM=$(md5sum dist/${ARTIFACT_NAME}.zip | awk '{print $1}')
           SHORT_SHA="${GITHUB_SHA::7}"
           REPO_URL="https://github.com/${GITHUB_REPOSITORY}"
 
