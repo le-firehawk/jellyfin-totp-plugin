@@ -14,8 +14,8 @@
         "changelog": "Development build c4d8522.",
         "targetAbi": "10.10.0.0",
         "sourceUrl": "https://github.com/le-firehawk/jellyfin-totp-plugin/releases/download/dev-c4d8522/dev-c4d8522-Jellyfin.Plugin.Totp.zip",
-        "checksum": "d6ae4739b7eae4667ca4fa487538b375",
-        "timestamp": "2026-06-16T08:00:41Z"
+        "checksum": "4f7b1d216d2ae06769a3ba552f62877d",
+        "timestamp": "2026-06-16T09:58:37Z"
       },
       {
         "version": "0.0.2499.34907",
