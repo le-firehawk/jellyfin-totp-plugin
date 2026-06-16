@@ -18,22 +18,6 @@
         "timestamp": "2026-06-16T07:57:03Z"
       },
       {
-        "version": "0.1.0-pr.18.205f3b9",
-        "changelog": "Pull request #18 build 205f3b9.",
-        "targetAbi": "10.10.0.0",
-        "sourceUrl": "https://github.com/le-firehawk/jellyfin-totp-plugin/releases/download/pr-18-205f3b9/pr-18-205f3b9-Jellyfin.Plugin.Totp.zip",
-        "checksum": "6adfd1fd02afca5c36d83dac615bf667",
-        "timestamp": "2026-06-16T07:15:57Z"
-      },
-      {
-        "version": "0.1.0-dev.205f3b9",
-        "changelog": "Development build 205f3b9.",
-        "targetAbi": "10.10.0.0",
-        "sourceUrl": "https://github.com/le-firehawk/jellyfin-totp-plugin/releases/download/dev-205f3b9/dev-205f3b9-Jellyfin.Plugin.Totp.zip",
-        "checksum": "0bdf7826d6b87ed612d1d3713d57f349",
-        "timestamp": "2026-06-16T07:15:17Z"
-      },
-      {
         "version": "0.1.3",
         "changelog": "Release v0.1.3.",
         "targetAbi": "10.10.0.0",
