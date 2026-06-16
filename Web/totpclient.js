@@ -9,7 +9,7 @@
   }
 
   function createButton(text, className) {
-    const button = document.createElement('button');
+    const button = document.createElement('button', { is: 'emby-button' });
     button.type = 'button';
     button.setAttribute('is', 'emby-button');
     button.className = className || 'raised button-submit block';
@@ -27,8 +27,12 @@
     return section;
   }
 
+  function getActivePage() {
+    return document.querySelector('.page:not(.hide):not(.hidden), [data-role="page"]:not(.hide):not(.hidden), .view:not(.hide):not(.hidden)') || document.querySelector('[data-role="content"]') || document.body;
+  }
+
   function currentViewText() {
-    return ((document.querySelector('.page:not(.hide), .page:not(.hidden), [data-role="page"]') || document.body).textContent || '').toLowerCase();
+    return ((getActivePage() || document.body).textContent || '').toLowerCase();
   }
 
   function getCurrentUserId() {
@@ -38,13 +42,24 @@
   }
 
   function getRouteUserId() {
+    const queries = [];
+    if (window.location.search) queries.push(window.location.search);
     const hashQuery = (window.location.hash.split('?')[1] || '').split('#')[0];
-    const query = new URLSearchParams(window.location.search || hashQuery);
-    return query.get('userId') || query.get('id') || query.get('user') || getCurrentUserId();
+    if (hashQuery) queries.push(hashQuery);
+
+    for (let i = 0; i < queries.length; i++) {
+      const query = new URLSearchParams(queries[i]);
+      const userId = query.get('userId') || query.get('id') || query.get('user');
+      if (userId) return userId;
+    }
+
+    const page = getActivePage();
+    const selectedUser = page && page.querySelector('[data-userid], [data-user-id], [data-id]');
+    return (selectedUser && (selectedUser.getAttribute('data-userid') || selectedUser.getAttribute('data-user-id') || selectedUser.getAttribute('data-id'))) || getCurrentUserId();
   }
 
-  function findTextElement(pattern) {
-    const candidates = document.querySelectorAll('label, .fieldDescription, .selectLabel, h1, h2, h3, h4, div, span');
+  function findTextElement(pattern, root) {
+    const candidates = (root || getActivePage()).querySelectorAll('label, .fieldDescription, .selectLabel, h1, h2, h3, h4, div, span');
     return Array.prototype.find.call(candidates, function (element) {
       return pattern.test((element.textContent || '').trim());
     });
@@ -54,16 +69,17 @@
     const text = currentViewText();
     if (!/profile|password|tfa|two-factor|two factor|authentication/i.test(text)) return null;
 
-    const tfaHeading = findTextElement(/^(tfa|two-factor authentication|two factor authentication)$/i);
+    const page = getActivePage();
+    const tfaHeading = findTextElement(/^(tfa|two-factor authentication|two factor authentication)$/i, page);
     if (tfaHeading) return tfaHeading.closest('.verticalSection, form, .sectionContent, [data-role="content"]') || tfaHeading.parentElement;
 
-    const passwordButton = Array.prototype.find.call(document.querySelectorAll('button, .emby-button'), function (button) {
+    const passwordButton = Array.prototype.find.call(page.querySelectorAll('button, .emby-button'), function (button) {
       return /save password|change password/i.test(button.textContent || '');
     });
 
     if (passwordButton) return passwordButton.closest('.verticalSection, form, .sectionContent') || passwordButton.parentElement;
 
-    const profileHeading = findTextElement(/^profile$/i);
+    const profileHeading = findTextElement(/^profile$/i, page);
     return profileHeading && (profileHeading.closest('.verticalSection, form, .sectionContent, [data-role="content"]') || profileHeading.parentElement);
   }
 
@@ -76,7 +92,8 @@
     const onUserProfile = isUserProfileRoute();
     if (!onUserProfile && !/password reset provider|reset password|policy|user/i.test(text)) return null;
 
-    const passwordResetLabel = findTextElement(/password reset provider/i) || findTextElement(/reset password/i);
+    const page = getActivePage();
+    const passwordResetLabel = findTextElement(/password reset provider/i, page) || findTextElement(/reset password/i, page);
     if (passwordResetLabel) {
       const container = passwordResetLabel.closest('.selectContainer, .inputContainer, .fieldDescriptionContainer, .verticalSection') || passwordResetLabel.parentElement;
       const description = container && container.querySelector('.fieldDescription');
@@ -85,16 +102,16 @@
 
     if (!onUserProfile) return null;
 
-    const policyHeading = findTextElement(/^(policy|profile|settings)$/i);
+    const policyHeading = findTextElement(/^(policy|profile|settings)$/i, page);
     if (policyHeading) return policyHeading.closest('.verticalSection, form, .sectionContent, [data-role="content"]') || policyHeading.parentElement;
 
-    return document.querySelector('.userProfilePage form, .userProfilePage .sectionContent, .page:not(.hide) form, .page:not(.hidden) form, [data-role="content"]');
+    return page.querySelector('.userProfilePage form, .userProfilePage .sectionContent, form, .sectionContent') || page;
   }
 
   async function apiRequest(method, path, data) {
     return ApiClient.ajax({
       type: method,
-      url: ApiClient.getUrl(path),
+      url: ApiClient.getUrl(path.charAt(0) === '/' ? path.substring(1) : path),
       data: data ? JSON.stringify(data) : undefined,
       contentType: data ? 'application/json' : undefined,
       headers: { Accept: 'application/json' }
@@ -215,6 +232,7 @@
   }
 
   function injectTotpUi() {
+    if (!document.body) return;
     injectProfileSetup();
     injectAdminReset();
   }
@@ -247,10 +265,23 @@
     inject: injectTotpUi
   };
 
-  document.addEventListener('viewshow', injectTotpUi);
-  document.addEventListener('pageshow', injectTotpUi);
-  document.addEventListener('DOMContentLoaded', injectTotpUi);
-  window.addEventListener('hashchange', function () { setTimeout(injectTotpUi, 100); });
+  function scheduleInject() {
+    setTimeout(injectTotpUi, 100);
+    setTimeout(injectTotpUi, 500);
+  }
+
+  document.addEventListener('viewshow', scheduleInject);
+  document.addEventListener('pageshow', scheduleInject);
+  document.addEventListener('DOMContentLoaded', scheduleInject);
+  window.addEventListener('hashchange', scheduleInject);
   setInterval(injectTotpUi, 1000);
-  new MutationObserver(injectTotpUi).observe(document.body || document.documentElement, { childList: true, subtree: true });
+
+  function startObserver() {
+    const target = document.body || document.documentElement;
+    if (!target) { setTimeout(startObserver, 100); return; }
+    new MutationObserver(injectTotpUi).observe(target, { childList: true, subtree: true });
+    injectTotpUi();
+  }
+
+  startObserver();
 }());
