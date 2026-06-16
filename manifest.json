@@ -10,6 +10,14 @@
     "repositoryUrl": "https://github.com/le-firehawk/jellyfin-totp-plugin",
     "versions": [
       {
+        "version": "0.0.2499.34907",
+        "changelog": "Development build 9c3885b.",
+        "targetAbi": "10.10.0.0",
+        "sourceUrl": "https://github.com/le-firehawk/jellyfin-totp-plugin/releases/download/dev-9c3885b/dev-9c3885b-Jellyfin.Plugin.Totp.zip",
+        "checksum": "6389db943a493d6b4153e79391c3bc72",
+        "timestamp": "2026-06-16T07:56:17Z"
+      },
+      {
         "version": "0.1.0-pr.18.205f3b9",
         "changelog": "Pull request #18 build 205f3b9.",
         "targetAbi": "10.10.0.0",
