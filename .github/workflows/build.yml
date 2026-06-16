@@ -6,15 +6,16 @@ on:
     tags: [ 'v*' ]
   pull_request:
   workflow_dispatch:
-  release:
-    types: [ published ]
+
+concurrency:
+  group: jellyfin-totp-plugin-manifest
+  cancel-in-progress: false
 
 permissions:
   contents: write
 
 jobs:
   build:
-    if: github.event_name != 'release' || github.event.release.tag_name != 'latest'
     runs-on: ubuntu-latest
     env:
       CONFIGURATION: Release
@@ -31,32 +32,61 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
-      - name: Resolve plugin version
-        id: plugin_version
+      - name: Resolve build metadata
+        id: build_metadata
         shell: bash
         env:
-          RELEASE_TAG: ${{ github.event.release.tag_name || github.ref_name }}
+          EVENT_NAME: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+          REF_TYPE: ${{ github.ref_type }}
+          SHA: ${{ github.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
 
-          if [[ "${RELEASE_TAG}" == v* ]]; then
-            version="${RELEASE_TAG#v}"
+          short_sha="${SHA::7}"
+          source_sha="$SHA"
+          base_version="$(python3 -c 'import json, re; from pathlib import Path; versions = json.loads(Path("manifest.json").read_text(encoding="utf-8"))[0].get("versions", []); print(next((m.group(1) for item in versions if (m := re.match(r"^(\\d+\\.\\d+\\.\\d+)(?:[.-].*)?$", item.get("version", "")))), "0.1.0"))')"
+
+          if [[ "$REF_TYPE" == "tag" && "$REF_NAME" == v* ]]; then
+            release_tag="$REF_NAME"
+            version="${REF_NAME#v}"
+            changelog="Release ${REF_NAME}."
+            prerelease="false"
+          elif [[ "$EVENT_NAME" == "pull_request" ]]; then
+            source_sha="$PR_SHA"
+            short_sha="${PR_SHA::7}"
+            release_tag="pr-${PR_NUMBER}-${short_sha}"
+            version="${base_version}-pr.${PR_NUMBER}.${short_sha}"
+            changelog="Pull request #${PR_NUMBER} build ${short_sha}."
+            prerelease="true"
           else
-            # Non-release builds use the latest checked-in repository manifest
-            # entry, while release builds are always stamped from the tag.
-            version="$(python3 -c 'import json; from pathlib import Path; print(json.loads(Path("manifest.json").read_text(encoding="utf-8"))[0]["versions"][0]["version"])')"
+            release_tag="dev-${short_sha}"
+            version="${base_version}-dev.${short_sha}"
+            changelog="Development build ${short_sha}."
+            prerelease="true"
           fi
 
-          if [[ ! "${version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-].*)?$ ]]; then
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-].*)?$ ]]; then
             echo "Resolved plugin version '${version}' is not a SemVer value." >&2
             exit 1
           fi
 
-          assembly_version="${version%%[-+]*}"
-          assembly_version="${assembly_version}.0"
-          echo "version=${version}" >> "$GITHUB_OUTPUT"
-          echo "assembly_version=${assembly_version}" >> "$GITHUB_OUTPUT"
-          echo "Building Jellyfin.Plugin.Totp ${version} (${assembly_version})."
+          assembly_version="${version%%[-+]*}.0"
+          asset_name="${release_tag}-${ARTIFACT_NAME}.zip"
+
+          {
+            echo "version=$version"
+            echo "assembly_version=$assembly_version"
+            echo "release_tag=$release_tag"
+            echo "asset_name=$asset_name"
+            echo "changelog=$changelog"
+            echo "prerelease=$prerelease"
+            echo "source_sha=$source_sha"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "Building ${ARTIFACT_NAME} ${version} (${assembly_version}) for ${release_tag}."
 
       - name: Restore
         run: dotnet restore Jellyfin.Plugin.Totp.csproj
@@ -66,10 +96,10 @@ jobs:
           dotnet build Jellyfin.Plugin.Totp.csproj
           --configuration "$CONFIGURATION"
           --no-restore
-          -p:Version=${{ steps.plugin_version.outputs.version }}
-          -p:AssemblyVersion=${{ steps.plugin_version.outputs.assembly_version }}
-          -p:FileVersion=${{ steps.plugin_version.outputs.assembly_version }}
-          -p:InformationalVersion=${{ steps.plugin_version.outputs.version }}
+          -p:Version=${{ steps.build_metadata.outputs.version }}
+          -p:AssemblyVersion=${{ steps.build_metadata.outputs.assembly_version }}
+          -p:FileVersion=${{ steps.build_metadata.outputs.assembly_version }}
+          -p:InformationalVersion=${{ steps.build_metadata.outputs.version }}
 
       - name: Publish
         run: >-
@@ -77,35 +107,35 @@ jobs:
           --configuration "$CONFIGURATION"
           --no-build
           --output dist/plugin
-          -p:Version=${{ steps.plugin_version.outputs.version }}
-          -p:AssemblyVersion=${{ steps.plugin_version.outputs.assembly_version }}
-          -p:FileVersion=${{ steps.plugin_version.outputs.assembly_version }}
-          -p:InformationalVersion=${{ steps.plugin_version.outputs.version }}
+          -p:Version=${{ steps.build_metadata.outputs.version }}
+          -p:AssemblyVersion=${{ steps.build_metadata.outputs.assembly_version }}
+          -p:FileVersion=${{ steps.build_metadata.outputs.assembly_version }}
+          -p:InformationalVersion=${{ steps.build_metadata.outputs.version }}
 
       - name: Package plugin
         shell: bash
         run: |
           set -euo pipefail
           cd dist/plugin
-          zip -r ../${ARTIFACT_NAME}.zip .
+          zip -r "../${{ steps.build_metadata.outputs.asset_name }}" .
           cd ../..
-          echo "Plugin ZIP: dist/${ARTIFACT_NAME}.zip" >> "$GITHUB_STEP_SUMMARY"
-          echo "Repository manifest: https://github.com/le-firehawk/jellyfin-totp-plugin/raw/main/manifest.json" >> "$GITHUB_STEP_SUMMARY"
+          echo "Plugin ZIP: dist/${{ steps.build_metadata.outputs.asset_name }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Repository manifest: https://github.com/${GITHUB_REPOSITORY}/raw/${{ github.event.repository.default_branch }}/manifest.json" >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Update release manifest
-        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'release'
-        id: release_manifest
+      - name: Update manifest
+        id: manifest
         shell: bash
         env:
-          RELEASE_TAG: ${{ github.event.release.tag_name || github.ref_name }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           set -euo pipefail
 
-          version="${{ steps.plugin_version.outputs.version }}"
-          checksum="$(md5sum "dist/${ARTIFACT_NAME}.zip" | awk '{print $1}')"
-          source_url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/${ARTIFACT_NAME}.zip"
-          changelog="Release ${RELEASE_TAG}."
+          version="${{ steps.build_metadata.outputs.version }}"
+          release_tag="${{ steps.build_metadata.outputs.release_tag }}"
+          asset_name="${{ steps.build_metadata.outputs.asset_name }}"
+          checksum="$(md5sum "dist/${asset_name}" | awk '{print $1}')"
+          source_url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${release_tag}/${asset_name}"
+          changelog="${{ steps.build_metadata.outputs.changelog }}"
 
           git fetch origin "${DEFAULT_BRANCH}"
           git checkout -B "${DEFAULT_BRANCH}" "origin/${DEFAULT_BRANCH}"
@@ -129,26 +159,26 @@ jobs:
       - name: Upload plugin package
         uses: actions/upload-artifact@v4
         with:
-          name: Jellyfin.Plugin.Totp-package
+          name: ${{ steps.build_metadata.outputs.release_tag }}-package
           path: |
-            dist/Jellyfin.Plugin.Totp.zip
+            dist/${{ steps.build_metadata.outputs.asset_name }}
             manifest.json
 
       - name: Publish GitHub release
-        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'release'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.event.release.tag_name || github.ref_name }}
+          tag_name: ${{ steps.build_metadata.outputs.release_tag }}
+          target_commitish: ${{ steps.build_metadata.outputs.source_sha }}
+          prerelease: ${{ steps.build_metadata.outputs.prerelease }}
+          make_latest: false
           fail_on_unmatched_files: true
           files: |
-            dist/Jellyfin.Plugin.Totp.zip
+            dist/${{ steps.build_metadata.outputs.asset_name }}
             manifest.json
 
-      - name: Commit release manifest update
-        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'release'
+      - name: Commit manifest update
         shell: bash
         env:
-          RELEASE_TAG: ${{ github.event.release.tag_name || github.ref_name }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           set -euo pipefail
@@ -158,33 +188,15 @@ jobs:
 
           git add manifest.json
           if git diff --cached --quiet; then
-            echo "Manifest already contains ${RELEASE_TAG}; no commit needed."
+            echo "Manifest already contains ${{ steps.build_metadata.outputs.release_tag }}; no commit needed."
             exit 0
           fi
 
-          git commit -m "Update manifest for ${RELEASE_TAG}"
+          git commit -m "Update manifest for ${{ steps.build_metadata.outputs.release_tag }} [skip ci]"
           git push origin "HEAD:${DEFAULT_BRANCH}"
 
-      - name: Publish pull request GitHub release
-        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: pr-${{ github.event.pull_request.number }}
-          name: Pull Request #${{ github.event.pull_request.number }} Jellyfin TOTP Plugin Build
-          body: |
-            Automated build for pull request #${{ github.event.pull_request.number }} from commit ${{ github.event.pull_request.head.sha }}.
-
-            Import this manifest URL in Jellyfin to test this pull request build:
-            https://github.com/${{ github.repository }}/releases/download/pr-${{ github.event.pull_request.number }}/manifest.json
-          prerelease: true
-          make_latest: false
-          fail_on_unmatched_files: true
-          files: |
-            dist/Jellyfin.Plugin.Totp.zip
-            manifest.json
-
       - name: Move latest tag
-        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'release'
+        if: startsWith(github.ref, 'refs/tags/v')
         shell: bash
         run: |
           set -euo pipefail
