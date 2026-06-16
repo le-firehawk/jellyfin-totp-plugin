@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 
 PLUGIN_GUID = "65e3f94b-29d8-4d3b-a348-2343784b1db8"
+NUMERIC_VERSION_RE = re.compile(r"^\d+(?:\.\d+){1,3}$")
 
 
 def main() -> None:
@@ -33,8 +35,16 @@ def main() -> None:
     path = Path(args.manifest)
     manifest = json.loads(path.read_text(encoding="utf-8"))
     plugin = next(item for item in manifest if item["guid"] == PLUGIN_GUID)
+    if not NUMERIC_VERSION_RE.fullmatch(args.version):
+        raise ValueError(f"Jellyfin requires numeric versions with 2-4 components: {args.version}")
+
     versions = plugin.setdefault("versions", [])
-    versions[:] = [item for item in versions if item.get("version") != args.version]
+    versions[:] = [
+        item
+        for item in versions
+        if NUMERIC_VERSION_RE.fullmatch(str(item.get("version", "")))
+        and item.get("version") != args.version
+    ]
     versions.insert(0, {
         "version": args.version,
         "changelog": args.changelog,

@@ -10,9 +10,9 @@ dotnet publish --configuration Release --output bin
 
 ## GitHub CI and releases
 
-The repository includes a GitHub Actions workflow at `.github/workflows/build.yml` that restores, builds, publishes, zips, and uploads the plugin. Release builds also update the checked-in static `manifest.json` so the Jellyfin repository document always points at immutable versioned release assets.
+The repository includes a GitHub Actions workflow at `.github/workflows/build.yml` that restores, builds, publishes, zips, uploads the plugin, and updates the checked-in static `manifest.json` so the Jellyfin repository document points at immutable build assets.
 
-`manifest.json` is the Jellyfin plugin repository document and is intentionally committed so it keeps a complete version history. When a `v*` tag or GitHub release is published, CI builds the ZIP, calculates Jellyfin's MD5 checksum, derives the plugin version from the tag, appends or replaces that version entry, commits `manifest.json` back to the default branch, and uploads the ZIP plus updated manifest to the release.
+`manifest.json` is the Jellyfin plugin repository document and is intentionally committed so it keeps a complete version history. CI serializes workflow runs with a repository-wide concurrency group before it updates the manifest, which prevents multiple builds from racing to commit different manifest states. Every default workflow build gets a prefixed release tag and ZIP name: regular branch pushes use `dev-<short-commit>`, pull request builds use `pr-<number>-<short-commit>`, and version tags use the `v*` tag. Because Jellyfin only accepts numeric manifest versions, non-tag builds derive a deterministic four-part numeric version from the short commit hash; if a push build and a pull request build point at the same commit, the later manifest update replaces the earlier entry instead of appending a duplicate. CI calculates Jellyfin's MD5 checksum for the generated ZIP, appends or replaces that version entry, uploads the ZIP plus updated manifest to the matching GitHub release, and commits `manifest.json` back to the default branch with `[skip ci]` so the manifest commit does not recursively create another development build.
 
 You can still update the manifest locally with the same helper script when testing the release process manually:
 
