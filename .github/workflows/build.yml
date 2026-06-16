@@ -44,14 +44,7 @@ jobs:
           else
             # Non-release builds use the latest checked-in repository manifest
             # entry, while release builds are always stamped from the tag.
-            version="$(python3 - <<'PY_VERSION'
-import json
-from pathlib import Path
-
-manifest = json.loads(Path('manifest.json').read_text(encoding='utf-8'))
-print(manifest[0]['versions'][0]['version'])
-PY_VERSION
-)"
+            version="$(python3 -c 'import json; from pathlib import Path; print(json.loads(Path("manifest.json").read_text(encoding="utf-8"))[0]["versions"][0]["version"])')"
           fi
 
           if [[ ! "${version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-].*)?$ ]]; then
