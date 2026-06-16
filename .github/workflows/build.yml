@@ -31,14 +31,63 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
+      - name: Resolve plugin version
+        id: plugin_version
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name || github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          if [[ "${RELEASE_TAG}" == v* ]]; then
+            version="${RELEASE_TAG#v}"
+          else
+            # Non-release builds use the latest checked-in repository manifest
+            # entry, while release builds are always stamped from the tag.
+            version="$(python3 - <<'PY_VERSION'
+import json
+from pathlib import Path
+
+manifest = json.loads(Path('manifest.json').read_text(encoding='utf-8'))
+print(manifest[0]['versions'][0]['version'])
+PY_VERSION
+)"
+          fi
+
+          if [[ ! "${version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-].*)?$ ]]; then
+            echo "Resolved plugin version '${version}' is not a SemVer value." >&2
+            exit 1
+          fi
+
+          assembly_version="${version%%[-+]*}"
+          assembly_version="${assembly_version}.0"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "assembly_version=${assembly_version}" >> "$GITHUB_OUTPUT"
+          echo "Building Jellyfin.Plugin.Totp ${version} (${assembly_version})."
+
       - name: Restore
         run: dotnet restore Jellyfin.Plugin.Totp.csproj
 
       - name: Build
-        run: dotnet build Jellyfin.Plugin.Totp.csproj --configuration "$CONFIGURATION" --no-restore
+        run: >-
+          dotnet build Jellyfin.Plugin.Totp.csproj
+          --configuration "$CONFIGURATION"
+          --no-restore
+          -p:Version=${{ steps.plugin_version.outputs.version }}
+          -p:AssemblyVersion=${{ steps.plugin_version.outputs.assembly_version }}
+          -p:FileVersion=${{ steps.plugin_version.outputs.assembly_version }}
+          -p:InformationalVersion=${{ steps.plugin_version.outputs.version }}
 
       - name: Publish
-        run: dotnet publish Jellyfin.Plugin.Totp.csproj --configuration "$CONFIGURATION" --no-build --output dist/plugin
+        run: >-
+          dotnet publish Jellyfin.Plugin.Totp.csproj
+          --configuration "$CONFIGURATION"
+          --no-build
+          --output dist/plugin
+          -p:Version=${{ steps.plugin_version.outputs.version }}
+          -p:AssemblyVersion=${{ steps.plugin_version.outputs.assembly_version }}
+          -p:FileVersion=${{ steps.plugin_version.outputs.assembly_version }}
+          -p:InformationalVersion=${{ steps.plugin_version.outputs.version }}
 
       - name: Package plugin
         shell: bash
@@ -60,7 +109,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          version="${RELEASE_TAG#v}"
+          version="${{ steps.plugin_version.outputs.version }}"
           checksum="$(md5sum "dist/${ARTIFACT_NAME}.zip" | awk '{print $1}')"
           source_url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/${ARTIFACT_NAME}.zip"
           changelog="Release ${RELEASE_TAG}."

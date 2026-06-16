@@ -21,11 +21,11 @@ dotnet publish --configuration Release --output dist/plugin
 (cd dist/plugin && zip -r ../Jellyfin.Plugin.Totp.zip .)
 CHECKSUM=$(md5sum dist/Jellyfin.Plugin.Totp.zip | awk '{print $1}')
 python3 scripts/append_manifest_version.py \
-  --version 1.0.0.0 \
+  --version 0.1.1 \
   --target-abi 10.10.0.0 \
-  --source-url https://github.com/le-firehawk/jellyfin-totp-plugin/releases/download/v1.0.0.0/Jellyfin.Plugin.Totp.zip \
+  --source-url https://github.com/le-firehawk/jellyfin-totp-plugin/releases/download/v0.1.1/Jellyfin.Plugin.Totp.zip \
   --checksum "$CHECKSUM" \
-  --changelog "Release v1.0.0.0."
+  --changelog "Release v0.1.1."
 ```
 
 New entries are inserted at the top of the `versions` array while older entries remain in the file for historical installs.
